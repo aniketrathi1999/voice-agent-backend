@@ -13,7 +13,7 @@ from livekit.agents import (
     cli,
     metrics,
 )
-from livekit.plugins import cartesia, deepgram, noise_cancellation, openai, silero
+from livekit.plugins import deepgram, noise_cancellation, openai, silero
 from livekit.agents.telemetry import set_tracer_provider
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
@@ -22,11 +22,6 @@ from opentelemetry.util.types import AttributeValue
 
 logger = logging.getLogger("agent")
 load_dotenv(".env.local")
-
-# Thresholds for metrics calculation
-MISSED_ENDPOINT_GRACE_S = 2.0
-MISSED_ENDPOINT_IDLE_S = 6.0
-
 
 def setup_langfuse(
     metadata: dict[str, AttributeValue] | None = None,
@@ -70,31 +65,48 @@ def prewarm(proc: JobProcess):
 
 async def entrypoint(ctx: JobContext):
     """Main entrypoint for the voice assistant"""
-    # Get room SID for session identification
     trace_provider = setup_langfuse(
-        # metadata will be set as attributes on all spans created by the tracer
         metadata={
             "langfuse.session.id": ctx.room.name,
         }
     )
+    
+    usage_collector = metrics.UsageCollector()
+
+    async def log_usage():
+        summary = usage_collector.get_summary()
+        logger.info(f"Usage: {summary}")
+
     async def flush_trace():
         trace_provider.force_flush()
 
+    ctx.add_shutdown_callback(log_usage)
     ctx.add_shutdown_callback(flush_trace)
+
+    min_endpointing_delay = float(os.getenv("MIN_ENDPOINTING_DELAY", "0.2"))
+    max_endpointing_delay = float(os.getenv("MAX_ENDPOINTING_DELAY", "6.0"))
+    allow_interruptions = os.getenv("ALLOW_INTERRUPTIONS", "true").strip().lower() in {"1", "true", "t", "yes", "y"}
+    preemptive_generation = os.getenv("PREEMPTIVE_GENERATION", "true").strip().lower() in {"1", "true", "t", "yes", "y"}
 
     # Create agent session
     session = AgentSession(
         llm=openai.LLM(model="gpt-4o-mini"),
-        stt=deepgram.STT(model="nova-2", language="en"),  # Simplified for reliability
-        tts=cartesia.TTS(voice="6f84f4b8-58a2-430c-8c79-688dad597532"),
+        stt=deepgram.STT(model="nova-2", language="en"),  
+        tts=openai.TTS(
+                model="gpt-4o-mini-tts",  
+                voice="ash",              
+            ),
         turn_detection="vad",
         vad=ctx.proc.userdata["vad"],
-        preemptive_generation=True,
-        min_endpointing_delay=0.5,
-        max_endpointing_delay=6.0,
-        allow_interruptions=True
+        min_endpointing_delay=min_endpointing_delay,
+        max_endpointing_delay=max_endpointing_delay,
+        allow_interruptions=allow_interruptions,
+        preemptive_generation=preemptive_generation
     )
     
+    # Add log for configuration
+    logger.info(f"Configuration: min_endpointing_delay={min_endpointing_delay}, max_endpointing_delay={max_endpointing_delay}, allow_interruptions={allow_interruptions}, preemptive_generation={preemptive_generation}")
+
     # Start the session
     await session.start(
         agent=Assistant(),
@@ -108,6 +120,7 @@ async def entrypoint(ctx: JobContext):
     def _on_metrics_collected(ev: MetricsCollectedEvent):
         logger.info(f"Metrics collected for session")
         metrics.log_metrics(ev.metrics)
+        usage_collector.collect(ev.metrics)
     
     # Connect to the room
     await ctx.connect()

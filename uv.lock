@@ -13,7 +13,7 @@ name = "agent-starter-python"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "livekit-agents", extra = ["cartesia", "deepgram", "openai", "silero", "turn-detector"] },
+    { name = "livekit-agents", extra = ["cartesia", "deepgram", "groq", "openai", "silero", "turn-detector"] },
     { name = "livekit-plugins-noise-cancellation" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
@@ -30,7 +30,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "livekit-agents", extras = ["openai", "turn-detector", "silero", "cartesia", "deepgram"], specifier = "~=1.2" },
+    { name = "livekit-agents", extras = ["cartesia", "deepgram", "groq", "openai", "silero", "turn-detector"], specifier = "~=1.2" },
     { name = "livekit-plugins-noise-cancellation", specifier = "~=0.2" },
     { name = "opentelemetry-api", specifier = ">=1.36.0" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.36.0" },
@@ -1017,6 +1017,9 @@ codecs = [
 deepgram = [
     { name = "livekit-plugins-deepgram" },
 ]
+groq = [
+    { name = "livekit-plugins-groq" },
+]
 images = [
     { name = "pillow" },
 ]
@@ -1103,6 +1106,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a8/b4/cee8e6cb221f8de99ab654c52dfb7b0204297ba8fcbbb83bb233f37806c3/livekit_plugins_deepgram-1.2.5.tar.gz", hash = "sha256:5977ac8629333d84bdd1a62171eb6d085feac2ffe17614a99d6e3f531ca3be0c", size = 13099, upload-time = "2025-08-10T10:21:42.64Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/56/02d2c3f8cd6fa98d6139ef1413941ffd8c6cd3ca81c1a704918157deb7fc/livekit_plugins_deepgram-1.2.5-py3-none-any.whl", hash = "sha256:18b366299f526fd289c794a0bb897c4a9e05deca8dd66c93e72d890f8009cb22", size = 15150, upload-time = "2025-08-10T10:21:41.61Z" },
+]
+
+[[package]]
+name = "livekit-plugins-groq"
+version = "1.2.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "livekit" },
+    { name = "livekit-agents", extra = ["codecs"] },
+    { name = "livekit-plugins-openai" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/51/cc/d20f57c5f6aa9574cc6a83e2501a1708ffd97b668274fda696963ee93655/livekit_plugins_groq-1.2.5.tar.gz", hash = "sha256:8bb5da24420b5838102391e5150b61c7a1508eaf474787a50188b10a78e951da", size = 6051, upload-time = "2025-08-10T10:21:52.142Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8b/73/7c657edeba798e00992b7bdc395a9a2e4294524908e8a31e932d798f6688/livekit_plugins_groq-1.2.5-py3-none-any.whl", hash = "sha256:717785bc74d7c3e0fa75e599c888572722695d227f9653301d684e431d482270", size = 7270, upload-time = "2025-08-10T10:21:51.002Z" },
 ]
 
 [[package]]
