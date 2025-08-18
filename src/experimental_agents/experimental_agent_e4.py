@@ -1,9 +1,9 @@
 import logging
 import os
 import base64
-import asyncio  # NEW
-import time     # NEW
-from typing import AsyncIterable, Optional  # NEW
+import asyncio
+import time
+from typing import AsyncIterable, Optional
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -16,11 +16,11 @@ from livekit.agents import (
     WorkerOptions,
     cli,
     metrics,
-    ModelSettings,      # NEW
+    ModelSettings,
 )
 from livekit.agents.metrics import TTSMetrics
-from livekit.agents.stt import SpeechEventType, SpeechEvent  # NEW
-from livekit import rtc                                     # NEW
+from livekit.agents.stt import SpeechEventType, SpeechEvent
+from livekit import rtc
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins import deepgram, noise_cancellation, openai, silero
 from livekit.agents.telemetry import set_tracer_provider
@@ -29,51 +29,93 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.util.types import AttributeValue
 
+# Initialize logging
 logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
-# -------- NEW: small metrics helpers --------
-def _levenshtein(a: list[str], b: list[str]) -> int:
-    m, n = len(a), len(b)
-    dp = list(range(n + 1))
-    for i in range(1, m + 1):
-        prev = dp[0]
+def _levenshtein_distance(source_tokens: list[str], target_tokens: list[str]) -> int:
+    """Calculate Levenshtein distance between two token lists.
+    
+    Args:
+        source_tokens: List of source tokens
+        target_tokens: List of target tokens
+        
+    Returns:
+        int: Minimum number of single-token edits (insertions, deletions, substitutions)
+             needed to change source into target.
+    """
+    source_len = len(source_tokens)
+    target_len = len(target_tokens)
+    
+    # Initialize dynamic programming table
+    dp = list(range(target_len + 1))
+    
+    for i in range(1, source_len + 1):
+        prev_diag = dp[0]
         dp[0] = i
-        for j in range(1, n + 1):
-            cur = dp[j]
-            if a[i - 1] == b[j - 1]:
-                dp[j] = prev
+        
+        for j in range(1, target_len + 1):
+            temp = dp[j]
+            if source_tokens[i - 1] == target_tokens[j - 1]:
+                dp[j] = prev_diag
             else:
-                dp[j] = min(prev, dp[j], dp[j - 1]) + 1
-            prev = cur
-    return dp[n]
+                dp[j] = min(prev_diag, dp[j], dp[j - 1]) + 1
+            prev_diag = temp
+            
+    return dp[target_len]
 
-def word_error_rate(ref: str, hyp: str) -> float:
-    ref_w = ref.strip().split()
-    hyp_w = hyp.strip().split()
-    if not ref_w:
-        return 0.0 if not hyp_w else 1.0
-    return _levenshtein(ref_w, hyp_w) / max(1, len(ref_w))
+def word_error_rate(reference: str, hypothesis: str) -> float:
+    """Calculate Word Error Rate between reference and hypothesis strings.
+    
+    Args:
+        reference: Reference text
+        hypothesis: Hypothesis text to evaluate
+        
+    Returns:
+        float: Word Error Rate (0.0 to 1.0), where 0.0 is perfect match
+    """
+    ref_tokens = reference.strip().split()
+    hyp_tokens = hypothesis.strip().split()
+    
+    if not ref_tokens:
+        return 0.0 if not hyp_tokens else 1.0
+        
+    return _levenshtein_distance(ref_tokens, hyp_tokens) / max(1, len(ref_tokens))
 
-def lcs_ratio(a: str, b: str) -> float:
-    # Quick longest-common-subsequence-ish overlap via dynamic programming
-    A, B = a.split(), b.split()
-    m, n = len(A), len(B)
-    if m == 0 or n == 0:
+def longest_common_subsequence_ratio(str_a: str, str_b: str) -> float:
+    """Calculate ratio of longest common subsequence to max string length.
+    
+    Args:
+        str_a: First string for comparison
+        str_b: Second string for comparison
+        
+    Returns:
+        float: Ratio of LCS length to maximum input length (0.0 to 1.0)
+    """
+    tokens_a = str_a.split()
+    tokens_b = str_b.split()
+    
+    len_a = len(tokens_a)
+    len_b = len(tokens_b)
+    
+    if len_a == 0 or len_b == 0:
         return 0.0
-    dp = [0] * (n + 1)
-    for i in range(1, m + 1):
+        
+    # Initialize DP table
+    dp = [0] * (len_b + 1)
+    
+    for i in range(1, len_a + 1):
         prev = 0
-        for j in range(1, n + 1):
-            tmp = dp[j]
-            if A[i - 1] == B[j - 1]:
+        for j in range(1, len_b + 1):
+            temp = dp[j]
+            if tokens_a[i - 1] == tokens_b[j - 1]:
                 dp[j] = prev + 1
             else:
                 dp[j] = max(dp[j], dp[j - 1])
-            prev = tmp
-    lcs = dp[n]
-    return lcs / max(m, n)
-# --------------------------------------------
+            prev = temp
+            
+    lcs_length = dp[len_b]
+    return lcs_length / max(len_a, len_b)
 
 def setup_langfuse(
     metadata: dict[str, AttributeValue] | None = None,
@@ -81,105 +123,182 @@ def setup_langfuse(
     host: str | None = None,
     public_key: str | None = None,
     secret_key: str | None = None,
-):
-    """Setup Langfuse tracing with proper authentication"""
+) -> TracerProvider:
+    """Initialize and configure Langfuse tracing with proper authentication.
+    
+    Args:
+        metadata: Optional metadata to associate with traces
+        host: Langfuse host URL (defaults to LANGFUSE_HOST env var)
+        public_key: Langfuse public key (defaults to LANGFUSE_PUBLIC_KEY env var)
+        secret_key: Langfuse secret key (defaults to LANGFUSE_SECRET_KEY env var)
+        
+    Returns:
+        TracerProvider: Configured OpenTelemetry TracerProvider
+        
+    Raises:
+        ValueError: If required authentication keys are not provided
+    """
     public_key = public_key or os.getenv("LANGFUSE_PUBLIC_KEY")
     secret_key = secret_key or os.getenv("LANGFUSE_SECRET_KEY")
     host = host or os.getenv("LANGFUSE_HOST")
 
     if not public_key or not secret_key:
-        raise ValueError("LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY must be set")
+        raise ValueError(
+            "Missing Langfuse credentials. "
+            "Please set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
+        )
 
-    langfuse_auth = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
+    if not host:
+        raise ValueError("Langfuse host not specified. Set LANGFUSE_HOST environment variable.")
+
+    # Configure authentication headers for Langfuse
+    auth_token = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
     os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"{host.rstrip('/')}/api/public/otel"
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {langfuse_auth}"
+    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {auth_token}"
     
+    # Initialize OpenTelemetry tracing
     trace_provider = TracerProvider()
     trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     set_tracer_provider(trace_provider, metadata=metadata)
     
-    logger.info(f"Langfuse setup complete for session")
+    logger.info("Langfuse tracing initialized")
     return trace_provider
 
 class Assistant(Agent):
+    """Voice assistant that handles speech-to-text, processing, and text-to-speech.
+    
+    This agent includes early response capabilities that can begin processing
+    user speech before they finish talking, based on confidence thresholds.
+    """
+    
     def __init__(self) -> None:
+        """Initialize the voice assistant with configuration from environment."""
         super().__init__(
             instructions="""You are a helpful voice AI assistant.
             You eagerly assist users with their questions by providing information from your extensive knowledge.
             Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
             You are curious, friendly, and have a sense of humor.""",
         )
-        # -------- NEW: early-prompting controls --------
-        self._early_conf_threshold = float(os.getenv("EARLY_CONF_THRESHOLD", "0.70"))
-        self._early_min_chars = int(os.getenv("EARLY_MIN_CHARS", "12"))
-        self._early_mode = os.getenv("EARLY_MODE", "threshold")  # off | threshold
-        self._early_sent = False
-        self._early_text = ""
-        self._early_t0: Optional[float] = None
-        self._last_final_text = ""
-        # -----------------------------------------------
+        # Early response configuration
+        self._early_confidence_threshold = float(os.getenv("EARLY_CONF_THRESHOLD", "0.70"))
+        self._min_chars_for_early_response = int(os.getenv("EARLY_MIN_CHARS", "12"))
+        self._early_response_mode = os.getenv("EARLY_MODE", "threshold")  # 'off' or 'threshold'
+        
+        # Response tracking state
+        self._is_early_response_sent = False
+        self._early_response_text = ""
+        self._early_response_start_time: Optional[float] = None
+        self._last_final_transcript = ""
 
-    # -------- NEW: inspect STT stream for partials & confidence and prompt early --------
     async def stt_node(
         self,
         audio: AsyncIterable[rtc.AudioFrame],
         model_settings: ModelSettings,
     ) -> Optional[AsyncIterable[SpeechEvent]]:
-        # Use the default STT stream, but peek at events to log partials and gate early prompting.
-        async def _tap_stream():
-            async for ev in Agent.default.stt_node(self, audio, model_settings):
-                if isinstance(ev, SpeechEvent):
-                    if ev.type == SpeechEventType.INTERIM_TRANSCRIPT and ev.alternatives:
-                        alt = ev.alternatives[0]
-                        conf = getattr(alt, "confidence", None)
-                        text = alt.text or ""
-                        logger.debug(
-                            f"[STT partial] conf={conf if conf is not None else 'NA'} text={text!r}"
-                        )
+        """Process audio stream with speech-to-text and handle early response logic.
+        
+        This wraps the default STT node to implement early response capabilities
+        when the system has high confidence in the partial transcript.
+        
+        Args:
+            audio: Stream of audio frames to process
+            model_settings: Configuration for the speech recognition model
+            
+        Returns:
+            AsyncIterable of SpeechEvent objects containing transcription results
+        """
+        async def process_audio_stream():
+            async for event in Agent.default.stt_node(self, audio, model_settings):
+                if not isinstance(event, SpeechEvent):
+                    yield event
+                    continue
 
-                        # Early-prompt gate (only if we are not also using built-in preemptive_generation)
-                        preemptive_generation = os.getenv("PREEMPTIVE_GENERATION", "true").strip().lower() in {"1","true","t","yes","y"}
-                        if (
-                            self._early_mode == "threshold"
-                            and not self._early_sent
-                            and conf is not None and conf >= self._early_conf_threshold
-                            and len(text) >= self._early_min_chars
-                            and not preemptive_generation
-                        ):
-                            print("--------------------------------")
-                            print(conf, text, len(text), self._early_min_chars, preemptive_generation, self._early_mode, self._early_sent)
-                            print(ev)
-                            print("--------------------------------")
+                if event.type == SpeechEventType.INTERIM_TRANSCRIPT and event.alternatives:
+                    await self._handle_interim_transcript(event)
+                elif event.type == SpeechEventType.FINAL_TRANSCRIPT and event.alternatives:
+                    await self._handle_final_transcript(event)
+                
+                yield event
 
-                            self._early_sent = True
-                            self._early_text = text
-                            self._early_t0 = time.perf_counter()
-                            logger.info(f"[EARLY] triggering LLM at conf={conf:.2f} text={text!r}")
-                            # Fire-and-forget so we don't block the STT loop
-                            self.session.generate_reply(user_input=text)
+        return process_audio_stream()
+    
+    async def _handle_interim_transcript(self, event: SpeechEvent) -> None:
+        """Process interim (partial) transcript for potential early response.
+        
+        Args:
+            event: SpeechEvent containing the interim transcript
+        """
+        if not event.alternatives:
+            return
+            
+        transcript = event.alternatives[0]
+        confidence = getattr(transcript, "confidence", None)
+        text = transcript.text or ""
+        
+        logger.debug(
+            f"Partial transcript - confidence: {confidence:.2f}, text: {text!r}"
+        )
 
-                    elif ev.type == SpeechEventType.FINAL_TRANSCRIPT and ev.alternatives:
-                        alt = ev.alternatives[0]
-                        final_text = alt.text or ""
-                        conf = getattr(alt, "confidence", None)
-                        self._last_final_text = final_text
-                        logger.debug(f"[STT final] conf={conf if conf is not None else 'NA'} text={final_text!r}")
-
-                        if self._early_sent and self._early_text:
-                            wer = word_error_rate(final_text, self._early_text)
-                            overlap = lcs_ratio(final_text, self._early_text)
-                            hallucination_risk = overlap < 0.5 or wer > 0.35
-                            logger.info(
-                                f"[COMPARE] WER(early→final)={wer:.3f} overlap={overlap:.2f} hallucination_risk={hallucination_risk}"
-                            )
-                            # reset early gate (keep _early_t0 until we log TTS ttfb)
-                            self._early_sent = False
-                            self._early_text = ""
-
-                yield ev
-
-        return _tap_stream()
-    # ------------------------------------------------------------------------------------
+        # Check if we should trigger an early response
+        is_preemptive_enabled = os.getenv("PREEMPTIVE_GENERATION", "true").strip().lower() in {
+            "1", "true", "t", "yes", "y"
+        }
+        
+        should_respond_early = (
+            self._early_response_mode == "threshold"
+            and not self._is_early_response_sent
+            and confidence is not None 
+            and confidence >= self._early_confidence_threshold
+            and len(text) >= self._min_chars_for_early_response
+            and not is_preemptive_enabled
+        )
+        
+        if should_respond_early:
+            self._is_early_response_sent = True
+            self._early_response_text = text
+            self._early_response_start_time = time.perf_counter()
+            
+            logger.info(
+                f"Initiating early response at confidence {confidence:.2f}: {text!r}"
+            )
+            
+            # Start response generation without blocking
+            self.session.generate_reply(user_input=text)
+    
+    async def _handle_final_transcript(self, event: SpeechEvent) -> None:
+        """Process final transcript and evaluate early response accuracy.
+        
+        Args:
+            event: SpeechEvent containing the final transcript
+        """
+        if not event.alternatives:
+            return
+            
+        transcript = event.alternatives[0]
+        final_text = transcript.text or ""
+        confidence = getattr(transcript, "confidence", None)
+        
+        self._last_final_transcript = final_text
+        logger.debug(
+            f"Final transcript - confidence: {confidence:.2f}, text: {final_text!r}"
+        )
+        
+        # Evaluate early response accuracy if we sent one
+        if self._is_early_response_sent and self._early_response_text:
+            error_rate = word_error_rate(final_text, self._early_response_text)
+            overlap = longest_common_subsequence_ratio(final_text, self._early_response_text)
+            is_potential_hallucination = overlap < 0.5 or error_rate > 0.35
+            
+            logger.info(
+                f"Early response evaluation - "
+                f"WER: {error_rate:.3f}, "
+                f"overlap: {overlap:.2f}, "
+                f"hallucination_risk: {is_potential_hallucination}"
+            )
+            
+            # Reset early response state (keep start time for latency measurement)
+            self._is_early_response_sent = False
+            self._early_response_text = ""
 
 def prewarm(proc: JobProcess):
     """Preload VAD model for better performance"""
