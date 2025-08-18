@@ -16,6 +16,7 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.36.0",
     "opentelemetry-sdk>=1.36.0",
     "python-dotenv",
+    "torch>=2.8.0",
 ]
 
 [dependency-groups]
