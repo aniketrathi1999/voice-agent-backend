@@ -2,110 +2,157 @@
   <img src="./.github/assets/livekit-mark.png" alt="LiveKit logo" width="100" height="100">
 </a>
 
-# LiveKit Agents Starter - Python
+# Voice AI Assistant with LiveKit
 
-A complete starter project for building voice AI apps with [LiveKit Agents for Python](https://github.com/livekit/agents).
+An optimized voice assistant built with LiveKit Agents for Python, featuring real-time speech recognition, natural language understanding, and high-quality text-to-speech synthesis.
 
-The starter project includes:
+## 🚀 Key Features
 
-- A simple voice AI assistant based on the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai/)
-- Voice AI pipeline based on [OpenAI](https://docs.livekit.io/agents/integrations/llm/openai/), [Cartesia](https://docs.livekit.io/agents/integrations/tts/cartesia/), and [Deepgram](https://docs.livekit.io/agents/integrations/llm/deepgram/)
-  - Easily integrate your preferred [LLM](https://docs.livekit.io/agents/integrations/llm/), [STT](https://docs.livekit.io/agents/integrations/stt/), and [TTS](https://docs.livekit.io/agents/integrations/tts/) instead, or swap to a realtime model like the [OpenAI Realtime API](https://docs.livekit.io/agents/integrations/realtime/openai)
-- Eval suite based on the LiveKit Agents [testing & evaluation framework](https://docs.livekit.io/agents/build/testing/)
-- [LiveKit Turn Detector](https://docs.livekit.io/agents/build/turns/turn-detector/) for contextually-aware speaker detection, with multilingual support
-- [LiveKit Cloud enhanced noise cancellation](https://docs.livekit.io/home/cloud/noise-cancellation/)
-- Integrated [metrics and logging](https://docs.livekit.io/agents/build/metrics/)
+- **Optimized Voice Pipeline**
+  - OpenAI GPT-4 for natural language understanding
+  - Deepgram Nova-2 for high-accuracy speech recognition
+  - Cartesia TTS for natural-sounding speech synthesis
+  - LiveKit Turn Detector for smooth conversation flow
 
-This starter app is compatible with any [custom web/mobile frontend](https://docs.livekit.io/agents/start/frontend/) or [SIP-based telephony](https://docs.livekit.io/agents/start/telephony/).
+- **Enhanced Performance**
+  - Early response on confident partial transcripts
+  - Optimized endpointing for natural turn-taking
+  - Pre-warmed VAD (Voice Activity Detection) for faster response times
+  - Session-level tracing with Langfuse integration
 
-## Dev Setup
+- **Developer Friendly**
+  - Clean, modular codebase
+  - Comprehensive logging and metrics
+  - Environment-based configuration
+  - Easy integration with custom frontends
 
-Clone the repository and install dependencies to a virtual environment:
+## 🛠️ Technical Stack
 
-```console
-cd agent-starter-python
-uv sync
+- **Backend**: Python 3.9+
+- **Real-time Communication**: LiveKit
+- **Speech Recognition**: Deepgram Nova-2
+- **Language Model**: OpenAI GPT-4
+- **Text-to-Speech**: Cartesia TTS
+- **Voice Activity Detection**: Silero VAD
+- **Observability**: Langfuse + OpenTelemetry
+
+## 🛠️ Configuration
+
+The agent can be configured using environment variables in `.env.local`:
+
+```env
+# LiveKit Configuration
+LIVEKIT_URL=wss://your-livekit-server.com
+LIVEKIT_API_KEY=your-api-key
+LIVEKIT_API_SECRET=your-api-secret
+
+# AI Services
+OPENAI_API_KEY=your-openai-key
+DEEPGRAM_API_KEY=your-deepgram-key
+CARTESIA_API_KEY=your-cartesia-key
+
+# Optional Tuning
+MIN_ENDPOINTING_DELAY=0.2  # Minimum delay before considering speech complete (seconds)
+MAX_ENDPOINTING_DELAY=6.0   # Maximum delay before forcing speech to complete
+ALLOW_INTERRUPTIONS=true    # Whether to allow barge-in
+PREEMPTIVE_GENERATION=false # Generate responses before user stops speaking
+
+# Early Response Tuning
+EARLY_CONF_THRESHOLD=0.70   # Confidence threshold for early responses
+EARLY_MIN_CHARS=12          # Minimum characters before considering early response
+
+# Langfuse Tracing (Optional)
+LANGFUSE_PUBLIC_KEY=your-key
+LANGFUSE_SECRET_KEY=your-secret
+LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
-Set up the environment by copying `.env.example` to `.env.local` and filling in the required values:
+## 🚀 Optimizations
 
-- `LIVEKIT_URL`: Use [LiveKit Cloud](https://cloud.livekit.io/) or [run your own](https://docs.livekit.io/home/self-hosting/)
-- `LIVEKIT_API_KEY`
-- `LIVEKIT_API_SECRET`
-- `OPENAI_API_KEY`: [Get a key](https://platform.openai.com/api-keys) or use your [preferred LLM provider](https://docs.livekit.io/agents/integrations/llm/)
-- `DEEPGRAM_API_KEY`: [Get a key](https://console.deepgram.com/) or use your [preferred STT provider](https://docs.livekit.io/agents/integrations/stt/)
-- `CARTESIA_API_KEY`: [Get a key](https://play.cartesia.ai/keys) or use your [preferred TTS provider](https://docs.livekit.io/agents/integrations/tts/)
+### Early Response System
+- **Confidence-based triggering**: Responds when confidence exceeds threshold
+- **Minimum character check**: Ensures enough context before responding
+- **Configurable thresholds**: Adjust sensitivity based on your needs
 
-You can load the LiveKit environment automatically using the [LiveKit CLI](https://docs.livekit.io/home/cli/cli-setup):
+### Performance Optimizations
+- **Pre-warmed VAD**: Reduces cold start time
+- **Efficient audio processing**: Optimized pipeline for low-latency responses
+- **Session management**: Clean resource handling and error recovery
 
+## 📦 Installation & Setup
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/voice-ai-assistant.git
+   cd agent-starter-python
+   ```
+
+2. Install dependencies:
+   ```bash
+   uv sync
+   ```
+
+3. Set up environment variables:
+   ```bash
+   cp .env.example .env.local
+   # Edit .env.local with your API keys
+   ```
+
+4. Download required models:
+   ```bash
+   uv run python src/agent.py download-files
+   ```
+
+## 🚀 Running the Agent
+
+### Development Mode
 ```bash
-lk app env -w .env.local
-```
-
-## Run the agent
-
-Before your first run, you must download certain models such as [Silero VAD](https://docs.livekit.io/agents/build/turns/vad/) and the [LiveKit turn detector](https://docs.livekit.io/agents/build/turns/turn-detector/):
-
-```console
-uv run python src/agent.py download-files
-```
-
-Next, run this command to speak to your agent directly in your terminal:
-
-```console
-uv run python src/agent.py console
-```
-
-To run the agent for use with a frontend or telephony, use the `dev` command:
-
-```console
 uv run python src/agent.py dev
 ```
 
-In production, use the `start` command:
-
-```console
+### Production Mode
+```bash
 uv run python src/agent.py start
 ```
 
-## Frontend & Telephony
+### Console Mode (for testing)
+```bash
+uv run python src/agent.py console
+```
 
-Get started quickly with our pre-built frontend starter apps, or add telephony support:
+## 🔧 Development
 
-| Platform | Link | Description |
-|----------|----------|-------------|
-| **Web** | [`livekit-examples/agent-starter-react`](https://github.com/livekit-examples/agent-starter-react) | Web voice AI assistant with React & Next.js |
-| **iOS/macOS** | [`livekit-examples/agent-starter-swift`](https://github.com/livekit-examples/agent-starter-swift) | Native iOS, macOS, and visionOS voice AI assistant |
-| **Flutter** | [`livekit-examples/agent-starter-flutter`](https://github.com/livekit-examples/agent-starter-flutter) | Cross-platform voice AI assistant app |
-| **React Native** | [`livekit-examples/voice-assistant-react-native`](https://github.com/livekit-examples/voice-assistant-react-native) | Native mobile app with React Native & Expo |
-| **Android** | [`livekit-examples/agent-starter-android`](https://github.com/livekit-examples/agent-starter-android) | Native Android app with Kotlin & Jetpack Compose |
-| **Web Embed** | [`livekit-examples/agent-starter-embed`](https://github.com/livekit-examples/agent-starter-embed) | Voice AI widget for any website |
-| **Telephony** | [📚 Documentation](https://docs.livekit.io/agents/start/telephony/) | Add inbound or outbound calling to your agent |
-
-For advanced customization, see the [complete frontend guide](https://docs.livekit.io/agents/start/frontend/).
-
-## Tests and evals
-
-This project includes a complete suite of evals, based on the LiveKit Agents [testing & evaluation framework](https://docs.livekit.io/agents/build/testing/). To run them, use `pytest`.
-
-```console
+### Testing
+Run the test suite:
+```bash
 uv run pytest
 ```
 
-## Using this template repo for your own project
+### Debugging
+Set `LOG_LEVEL=DEBUG` in your environment for detailed logging:
+```bash
+export LOG_LEVEL=DEBUG
+uv run python src/agent.py dev
+```
 
-Once you've started your own project based on this repo, you should:
+## 📊 Monitoring
 
-1. **Check in your `uv.lock`**: This file is currently untracked for the template, but you should commit it to your repository for reproducible builds and proper configuration management. (The same applies to `livekit.toml`, if you run your agents in LiveKit Cloud)
+The agent includes built-in monitoring:
+- **Langfuse Integration**: Session-level tracing and analytics
+- **LiveKit Metrics**: Real-time performance metrics
+- **Structured Logging**: Easy to parse and analyze
 
-2. **Remove the git tracking test**: Delete the "Check files not tracked in git" step from `.github/workflows/tests.yml` since you'll now want this file to be tracked. These are just there for development purposes in the template repo itself.
+## 🤝 Contributing
 
-3. **Add your own repository secrets**: You must [add secrets](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-what-your-workflow-does/using-secrets-in-github-actions) for `OPENAI_API_KEY` or your other LLM provider so that the tests can run in CI.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## Deploying to production
+## 🙏 Acknowledgments
 
-This project is production-ready and includes a working `Dockerfile`. To deploy it to LiveKit Cloud or another environment, see the [deploying to production](https://docs.livekit.io/agents/ops/deployment/) guide.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- [LiveKit](https://livekit.io/) for the real-time communication framework
+- [OpenAI](https://openai.com/) for the language model
+- [Deepgram](https://deepgram.com/) for speech recognition
+- [Cartesia](https://cartesia.ai/) for text-to-speech
