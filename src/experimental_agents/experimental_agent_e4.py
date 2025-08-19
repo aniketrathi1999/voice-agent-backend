@@ -332,8 +332,7 @@ async def entrypoint(ctx: JobContext):
     # Create agent session
     session = AgentSession(
         llm=openai.LLM(model="gpt-4o-mini"),
-        # CHANGED: enable streaming partials explicitly; keep your model choice
-        stt=deepgram.STT(model="nova-2", language="en", interim_results=True),  # NEW flag
+        stt=deepgram.STT(model="nova-2", language="en", interim_results=True),
         tts=openai.TTS(
             model="gpt-4o-mini-tts",
             voice="ash",
